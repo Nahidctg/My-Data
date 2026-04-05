@@ -3,29 +3,31 @@ import time
 import asyncio
 import subprocess
 import shutil
-import re  # নতুন ইমপোর্ট
+import re  # আপনার অরিজিনাল ইমপোর্ট
+import yt_dlp  # স্মার্ট লিঙ্ক প্রসেস করার জন্য নতুন যোগ করা হয়েছে
 from pyrogram import Client, filters, errors
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from hachoir.metadata import extractMetadata
 from hachoir.parser import createParser
 
-# --- আপনার সঠিক তথ্যগুলো ---
+# --- আপনার অরিজিনাল তথ্যগুলো ---
 API_ID = 28870226
 API_HASH = "a5b1ff3f75941649bf5bc159782f0f00"
 BOT_TOKEN = "8464633052:AAHi2fyYM0GibUBMbJaM-5HsojLqdNNlOqo"
 
-# --- প্রিমিয়াম ইউজার সেশন এবং চ্যানেল আইডি ---
+# --- নতুন প্রিমিয়াম ইউজার সেশন এবং চ্যানেল তথ্য ---
 STRING_SESSION = "আপনার_প্রিমিয়াম_সেশন_এখানে_দিন"
-LOG_CHANNEL = -1002345678901  # আপনার প্রাইভেট চ্যানেলের আইডি (বট ও ইউজার আইডি দুজনেই অ্যাডমিন থাকবে)
+LOG_CHANNEL = -1002345678901  # প্রাইভেট চ্যানেলের আইডি (বট ও ইউজার আইডি দুজনেই অ্যাডমিন থাকবে)
 
-# বট ক্লায়েন্ট
+# বট ক্লায়েন্ট (অরিজিনাল)
 app = Client("final_interactive_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# প্রিমিয়াম ইউজার ক্লায়েন্ট (৪জিবি আপলোডের জন্য)
+# প্রিমিয়াম ইউজার ক্লায়েন্ট (৪জিবি আপলোডের জন্য নতুন ক্লায়েন্ট)
 user_app = Client("premium_user", api_id=API_ID, api_hash=API_HASH, session_string=STRING_SESSION)
 
 user_data = {}
 
+# --- আপনার অরিজিনাল ফাংশনগুলো ---
 def human_size(num):
     if not num: return "0 B"
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -40,7 +42,28 @@ def get_duration(file_path):
     except Exception: pass
     return 0
 
-# প্রগ্রেস বার ফাংশন (ডাউনলোড এবং আপলোড উভয়ের জন্য)
+# --- স্মার্ট লিঙ্ক প্রসেসর (স্মার্ট ডাউনলোডের জন্য নতুন ফাংশন) ---
+def get_smart_link(url):
+    """
+    এই ফাংশনটি চেক করবে লিঙ্কটি সরাসরি ডাউনলোডযোগ্য নাকি কোনো ভিডিও সাইটের।
+    যদি ভিডিও সাইট হয় তবে yt-dlp দিয়ে ডাইরেক্ট লিঙ্ক বের করবে।
+    """
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'format': 'best',
+        'noplaylist': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+            # যদি yt-dlp লিঙ্কটি চিনতে পারে তবে ডাইরেক্ট ইউআরএল দিবে
+            return info.get('url', url)
+        except Exception:
+            # যদি yt-dlp চিনতে না পারে তবে অরিজিনাল লিঙ্কই ফেরত দিবে (aria2c এর জন্য)
+            return url
+
+# প্রগ্রেস বার ফাংশন (আপনার অরিজিনাল ফাংশন)
 async def progress_bar(current, total, status_text, status_msg, last_update_time):
     now = time.time()
     # ৫ সেকেন্ড পর পর আপডেট হবে (Flood Wait এড়াতে)
@@ -66,12 +89,17 @@ async def progress_bar(current, total, status_text, status_msg, last_update_time
 async def start(client, message):
     await message.reply_text("বট অনলাইন! 🚀\nযেকোনো মুভি বা ফাইল ডাউনলোড লিংক পাঠান। ৪জিবি সাপোর্ট সক্রিয়।")
 
-# --- ডাউনলোড সেকশন (প্রগ্রেস বার সহ) ---
+# --- ডাউনলোড সেকশন (আপনার অরিজিনাল লজিক + স্মার্ট লিঙ্ক আপডেট) ---
 @app.on_message(filters.regex(r'https?://[^\s]+') & filters.private)
 async def download_handler(client, message):
     url = message.text.strip()
     user_id = message.from_user.id
-    status_msg = await message.reply_text("লিংক প্রসেস করছি... ⏳")
+    status_msg = await message.reply_text("লিঙ্কটি এনালাইসিস করছি... 🔎")
+    
+    # স্মার্ট লিঙ্ক প্রসেসিং শুরু (নতুন লেয়ার)
+    direct_link = await asyncio.to_thread(get_smart_link, url)
+    
+    await status_msg.edit_text("লিংক প্রসেস করছি... ⏳")
     
     download_dir = f"downloads/{user_id}_{int(time.time())}"
     if not os.path.exists(download_dir): os.makedirs(download_dir)
@@ -79,7 +107,7 @@ async def download_handler(client, message):
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
 
     try:
-        # Aria2 কমান্ডে --summary-interval=1 যোগ করা হয়েছে যাতে প্রতি সেকেন্ডে স্ট্যাটাস দেয়
+        # Aria2 কমান্ড (আপনার অরিজিনাল কমান্ড)
         cmd = [
             "aria2c", 
             "--dir", download_dir,
@@ -87,7 +115,7 @@ async def download_handler(client, message):
             "--split=16",
             "--summary-interval=1",
             "--user-agent", user_agent,
-            url
+            direct_link  # এখানে স্মার্ট লিঙ্কটি ব্যবহার করা হচ্ছে
         ]
 
         process = await asyncio.create_subprocess_exec(
@@ -96,7 +124,7 @@ async def download_handler(client, message):
 
         last_update_time = [0]
         
-        # Aria2 এর আউটপুট রিড করে প্রগ্রেস বের করা
+        # আপনার অরিজিনাল Aria2 আউটপুট রিডিং লুপ
         while True:
             line = await process.stdout.readline()
             if not line:
@@ -104,7 +132,7 @@ async def download_handler(client, message):
             
             line_str = line.decode().strip()
             
-            # Regex দিয়ে প্রগ্রেস পার্স করা (যেমন: [#... 12MB/45MB(26%)])
+            # Regex দিয়ে প্রগ্রেস পার্স করা
             match = re.search(r'\((\d+)%\)', line_str)
             if match:
                 percentage = int(match.group(1))
@@ -156,7 +184,7 @@ async def download_handler(client, message):
     except Exception as e:
         await status_msg.edit_text(f"❌ এরর: {str(e)}")
 
-# --- ২. রিনেম ও থাম্বনেইল হ্যান্ডলার ---
+# --- আপনার অরিজিনাল রিনেম ও থাম্বনেইল হ্যান্ডলার ---
 @app.on_message(filters.private & (filters.text | filters.photo) & ~filters.command(["start"]))
 async def customization_handler(client, message):
     user_id = message.from_user.id
@@ -172,7 +200,7 @@ async def customization_handler(client, message):
         user_data[user_id]["thumb"] = thumb_path
         await message.reply_text("🖼 থাম্বনেইল সেট হয়েছে!")
 
-# --- ৩. আপলোড সেকশন (চ্যানেল এর মাধ্যমে ৪জিবি সরাসরি) ---
+# --- ৩. আপলোড সেকশন (৪জিবি সরাসরি প্রিমিয়াম চ্যানেলের মাধ্যমে) ---
 @app.on_callback_query(filters.regex("upload"))
 async def upload_btn(client, callback_query):
     user_id = callback_query.from_user.id
@@ -185,25 +213,25 @@ async def upload_btn(client, callback_query):
     new_path = os.path.join(os.path.dirname(old_path), data["new_name"])
     
     os.rename(old_path, new_path)
-    status_msg = await callback_query.message.edit_text("📤 ৪জিবি সাপোর্ট মোডে আপলোড হচ্ছে...")
+    status_msg = await callback_query.message.edit_text("📤 টেলিগ্রামে ৪জিবি সাপোর্ট মোডে আপলোড হচ্ছে...")
     
     video_duration = get_duration(new_path)
     last_update_time = [0] # প্রগ্রেস ট্র্যাকিংয়ের জন্য
 
     try:
-        # এখানে প্রিমিয়াম ইউজার আইডি দিয়ে চ্যানেলে আপলোড হচ্ছে
+        # প্রিমিয়াম সেশন (user_app) ব্যবহার করে চ্যানেলে আপলোড
         sent_msg = await user_app.send_video(
             chat_id=LOG_CHANNEL,
             video=new_path,
             duration=video_duration,
             thumb=data["thumb"],
-            caption=f"✅ `{data['new_name']}`",
+            caption=f"✅ **ফাইল:** `{data['new_name']}`\n💰 **সাইজ:** {human_size(os.path.getsize(new_path))}",
             supports_streaming=True,
             progress=progress_bar,
             progress_args=("📤 টেলিগ্রামে আপলোড হচ্ছে...", status_msg, last_update_time)
         )
 
-        # বট এবার ফাইলটি চ্যানেল থেকে ইউজারকে কপি করে পাঠিয়ে দিবে
+        # বট (app) ব্যবহার করে চ্যানেল থেকে ইউজারের ইনবক্সে ফাইলটি কপি করা
         await app.copy_message(
             chat_id=user_id,
             from_chat_id=LOG_CHANNEL,
@@ -218,13 +246,15 @@ async def upload_btn(client, callback_query):
         if os.path.exists(data["dir"]): shutil.rmtree(data["dir"])
         if user_id in user_data: del user_data[user_id]
 
-# --- বট স্টার্ট করার ফাইনাল ফাংশন ---
-async def start_bot():
+# --- সার্ভিস স্টার্ট করার ফাইনাল ফাংশন (বট ও ইউজার সেশন একসাথে) ---
+async def start_services():
     await app.start()
     await user_app.start()
-    print("বট এবং প্রিমিয়াম ইউজার সেশন সফলভাবে চালু হয়েছে! 🚀")
+    print("বট এবং প্রিমিয়াম ইউজার সেশন সফলভাবে চালু হয়েছে! 🚀")
+    # বটকে রানিং রাখার জন্য ইনফিনিট লুপ
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
+    # আপনার অরিজিনাল app.run() এর বদলে এটি ব্যবহার করতে হবে যেহেতু এখানে দুটি ক্লায়েন্ট আছে
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_bot())
+    loop.run_until_complete(start_services())
