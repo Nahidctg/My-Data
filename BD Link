@@ -2736,7 +2736,7 @@ async def web_ui():
                 btn.disabled = false;
             }
 
-            // 🌐 [UPDATE] লোকাল স্টোরেজ ভিত্তিক ডাইরেক্ট লিংক এক্সিকিউশন
+    // 🌐 [UPDATE] লোকাল স্টোরেজ ভিত্তিক ডাইরেক্ট লিংক এক্সিকিউশন
             function executeDirectLink() {
                 if (!DIRECT_LINKS || DIRECT_LINKS.length === 0) { 
                     document.getElementById('directLinkModal').style.display = 'none'; 
